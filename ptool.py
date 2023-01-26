@@ -3,12 +3,12 @@
 import argparse
 import os
 import pyexiv2
-import subprocess
-import sys
 from collections import Counter
 
+
 def upto60(x):
-    return x if len(x)<60 else '…%s' % x[-59:]
+    return x if len(x) < 60 else '…%s' % x[-59:]
+
 
 class Photo:
     def __init__(self, path: str):
@@ -20,14 +20,16 @@ class Photo:
 
 
 class BasicProcessor:
-    sieve = lambda _, x: x.endswith('.jpg')
-
     def __init__(self, root: str):
+        self.root = root
         for path, dirs, files in os.walk(root):
             for f in files:
                 ff = os.path.join(path, f)
                 if self.sieve(ff):
                     self.process(ff)
+
+    def sieve(self, filename):
+        return filename.endswith('.jpg')
 
 
 class Cams(BasicProcessor):
@@ -88,12 +90,31 @@ class Nogps(BasicProcessor):
     def __str__(self):
         return '\n'.join(self.lst)
 
+
+class NoGPSDir(BasicProcessor):
+    lst = {}
+
+    def process(self, f):
+        p = Photo(f)
+        nogps = p.get('Exif.GPSInfo.GPSLatitude') is None or p.get('Exif.GPSInfo.GPSLongitude') is None
+        dirname = os.path.dirname(f).removeprefix(self.root)
+        self.lst.setdefault(dirname, {True: 0, False: 0})
+        self.lst[dirname][nogps] += 1
+
+    def __str__(self):
+        return '\n'.join(
+            f'{v[True]:3} / {v[False]:<3} {k}'
+            for k, v in sorted(self.lst.items(), key=lambda x: x[1][True]) if v[True] > 0
+        )
+
+
 _parser = argparse.ArgumentParser()
 _parser.add_argument('root', action='store', type=str)
 _parser.add_argument('--cams', dest='mode', action='store_const', const=Cams)
 _parser.add_argument('--nocam', dest='mode', action='store_const', const=Nocam)
 _parser.add_argument('--hugin', dest='mode', action='store_const', const=Hugin)
 _parser.add_argument('--nogps', dest='mode', action='store_const', const=Nogps)
+_parser.add_argument('--nogpsdir', dest='mode', action='store_const', const=NoGPSDir)
 
 if __name__ == '__main__':
     args = _parser.parse_args()
@@ -104,9 +125,8 @@ if __name__ == '__main__':
 #    #if maker+model == '<UNDEF><UNDEF>':
 #    #    print('XXX: file <%s>' % ff)
 
-
-    #d1 = res['Exif.Photo.PixelXDimension'].value
-    #d2 = res['Exif.Photo.PixelYDimension'].value
-    #quot = max(d1, d2) / min(d1, d2)
-    #if (quot > 1.8) and ('pano' not in ff):
-    #    sizes[ff] = quot
+    # d1 = res['Exif.Photo.PixelXDimension'].value
+    # d2 = res['Exif.Photo.PixelYDimension'].value
+    # quot = max(d1, d2) / min(d1, d2)
+    # if (quot > 1.8) and ('pano' not in ff):
+    #     sizes[ff] = quot
