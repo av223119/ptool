@@ -3,7 +3,7 @@
 import argparse
 import os
 import pyexiv2
-from collections import Counter
+from collections import defaultdict
 
 
 def upto60(x):
@@ -34,13 +34,12 @@ class BasicProcessor:
 
 class Cams(BasicProcessor):
     """ Collects camera maker / model stats """
-    stat = {}
+    stat = defaultdict(lambda: defaultdict(int))
 
     def process(self, f):
         p = Photo(f)
         maker = p.get('Exif.Image.Make', '<UNDEF>').strip()
         model = p.get('Exif.Image.Model', '<UNDEF>').strip()
-        self.stat.setdefault(maker, Counter())
         self.stat[maker][model] += 1
 
     def __str__(self):
@@ -78,7 +77,7 @@ class Hugin(BasicProcessor):
         return '\n'.join(f'{upto60(k): >60} | {v: <30}' for k, v in self.lst.items())
 
 
-class Nogps(BasicProcessor):
+class NoGPS(BasicProcessor):
     """ Find photos without GPS tag """
     lst = []
 
@@ -113,7 +112,7 @@ _parser.add_argument('root', action='store', type=str)
 _parser.add_argument('--cams', dest='mode', action='store_const', const=Cams)
 _parser.add_argument('--nocam', dest='mode', action='store_const', const=Nocam)
 _parser.add_argument('--hugin', dest='mode', action='store_const', const=Hugin)
-_parser.add_argument('--nogps', dest='mode', action='store_const', const=Nogps)
+_parser.add_argument('--nogps', dest='mode', action='store_const', const=NoGPS)
 _parser.add_argument('--nogpsdir', dest='mode', action='store_const', const=NoGPSDir)
 
 if __name__ == '__main__':
