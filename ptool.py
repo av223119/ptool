@@ -20,11 +20,13 @@ class Photo:
 
 
 class BasicProcessor:
-    def __init__(self, root: str):
+    def __init__(self, root: str, exclude: list[str]):
         self.root = root
         for path, dirs, files in os.walk(root):
             for f in files:
                 ff = os.path.join(path, f)
+                if any(x in ff for x in exclude):
+                    continue
                 if self.sieve(ff):
                     self.process(ff)
 
@@ -50,7 +52,7 @@ class Cams(BasicProcessor):
         return r
 
 
-class Nocam(BasicProcessor):
+class NoCam(BasicProcessor):
     """ Finds photos w/o camera maker/model """
     lst = []
 
@@ -109,15 +111,16 @@ class NoGPSDir(BasicProcessor):
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument('root', action='store', type=str)
+_parser.add_argument('-x', '--exclude', action='append', type=str, default=[])
 _parser.add_argument('--cams', dest='mode', action='store_const', const=Cams)
-_parser.add_argument('--nocam', dest='mode', action='store_const', const=Nocam)
+_parser.add_argument('--nocam', dest='mode', action='store_const', const=NoCam)
 _parser.add_argument('--hugin', dest='mode', action='store_const', const=Hugin)
 _parser.add_argument('--nogps', dest='mode', action='store_const', const=NoGPS)
 _parser.add_argument('--nogpsdir', dest='mode', action='store_const', const=NoGPSDir)
 
 if __name__ == '__main__':
     args = _parser.parse_args()
-    print(args.mode(args.root))
+    print(args.mode(root=args.root, exclude=args.exclude))
 
 #    #if maker+model == 'QCOM-AAQCAM-AA':
 #    #    print('XXX: file <%s>' % ff)
