@@ -110,21 +110,16 @@ class NoGPSDir(BasicProcessor):
 
 
 _parser = argparse.ArgumentParser()
+_parser.add_argument('mode', action='store', type=str, choices=('cams', 'nocam', 'hugin', 'nogps', 'nogpsdir'))
 _parser.add_argument('root', action='store', type=str)
 _parser.add_argument('-x', '--exclude', action='append', type=str, default=[])
-_parser.add_argument('--cams', dest='mode', action='store_const', const=Cams)
-_parser.add_argument('--nocam', dest='mode', action='store_const', const=NoCam)
-_parser.add_argument('--hugin', dest='mode', action='store_const', const=Hugin)
-_parser.add_argument('--nogps', dest='mode', action='store_const', const=NoGPS)
-_parser.add_argument('--nogpsdir', dest='mode', action='store_const', const=NoGPSDir)
 
 if __name__ == '__main__':
     args = _parser.parse_args()
-    print(args.mode(root=args.root, exclude=args.exclude))
+    modes = {'cams': Cams, 'nocam': NoCam, 'hugin': Hugin, 'nogps': NoGPS, 'nogpsdir': NoGPSDir}
+    print(modes[args.mode](root=args.root, exclude=args.exclude))
 
 #    #if maker+model == 'QCOM-AAQCAM-AA':
-#    #    print('XXX: file <%s>' % ff)
-#    #if maker+model == '<UNDEF><UNDEF>':
 #    #    print('XXX: file <%s>' % ff)
 
     # d1 = res['Exif.Photo.PixelXDimension'].value
