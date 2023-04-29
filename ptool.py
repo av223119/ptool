@@ -3,6 +3,7 @@
 import argparse
 import os
 import pyexiv2
+import pprint
 from collections import defaultdict
 
 
@@ -17,6 +18,10 @@ class Photo:
 
     def get(self, key: str, default=None):
         return self.r[key].value if key in self.r else default
+
+    @property
+    def exif_keys(self):
+        return self.r.exif_keys
 
 
 class BasicProcessor:
@@ -109,14 +114,43 @@ class NoGPSDir(BasicProcessor):
         )
 
 
+class SameTag(BasicProcessor):
+    tags = {}
+
+    def process(self, f):
+        p = Photo(f)
+        for key in p.exif_keys:
+            val = str(p.get(key))
+            if key not in self.tags:
+                self.tags[key] = {'c': 1, 'v': val}
+            else:
+                if self.tags[key]['v'] == val:
+                    self.tags[key]['c'] += 1
+                else:
+                    self.tags[key] = {'c': -1, 'v': '<DIFFERENT>'}
+
+    def __str__(self):
+        return '\n'.join(
+            f'{y["c"]:5} | {x:40} | {y["v"]}'
+            for x, y in sorted(self.tags.items(), key=lambda x: x[1]['c'])
+        )
+
 _parser = argparse.ArgumentParser()
-_parser.add_argument('mode', action='store', type=str, choices=('cams', 'nocam', 'hugin', 'nogps', 'nogpsdir'))
+_parser.add_argument('mode', action='store', type=str,
+    choices=('cams', 'nocam', 'hugin', 'nogps', 'nogpsdir', 'sametag'))
 _parser.add_argument('root', action='store', type=str)
 _parser.add_argument('-x', '--exclude', action='append', type=str, default=[])
 
 if __name__ == '__main__':
     args = _parser.parse_args()
-    modes = {'cams': Cams, 'nocam': NoCam, 'hugin': Hugin, 'nogps': NoGPS, 'nogpsdir': NoGPSDir}
+    modes = {
+        'cams': Cams,
+        'nocam': NoCam,
+        'hugin': Hugin,
+        'nogps': NoGPS,
+        'nogpsdir': NoGPSDir,
+        'sametag': SameTag,
+    }
     print(modes[args.mode](root=args.root, exclude=args.exclude))
 
 #    #if maker+model == 'QCOM-AAQCAM-AA':
