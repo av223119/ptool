@@ -3,7 +3,6 @@
 import argparse
 import os
 import pyexiv2
-import pprint
 from collections import defaultdict
 
 
@@ -137,7 +136,7 @@ class SameTag(BasicProcessor):
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument('mode', action='store', type=str,
-    choices=('cams', 'nocam', 'hugin', 'nogps', 'nogpsdir', 'sametag'))
+                     choices=('cams', 'nocam', 'hugin', 'nogps', 'nogpsdir', 'sametag'))
 _parser.add_argument('root', action='store', type=str)
 _parser.add_argument('-x', '--exclude', action='append', type=str, default=[])
 
@@ -152,12 +151,3 @@ if __name__ == '__main__':
         'sametag': SameTag,
     }
     print(modes[args.mode](root=args.root, exclude=args.exclude))
-
-#    #if maker+model == 'QCOM-AAQCAM-AA':
-#    #    print('XXX: file <%s>' % ff)
-
-    # d1 = res['Exif.Photo.PixelXDimension'].value
-    # d2 = res['Exif.Photo.PixelYDimension'].value
-    # quot = max(d1, d2) / min(d1, d2)
-    # if (quot > 1.8) and ('pano' not in ff):
-    #     sizes[ff] = quot
