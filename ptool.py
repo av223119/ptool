@@ -4,6 +4,7 @@ import argparse
 import os
 import pyexiv2
 from collections import defaultdict
+from typing import override
 
 
 def upto60(x: str) -> str:
@@ -17,18 +18,18 @@ class Photo:
         self.r = pyexiv2.ImageMetadata(path)
         self.r.read()
 
-    def get(self, key: str, default=None):
+    def get(self, key: str, default: str = "") -> str:
         return self.r[key].value if key in self.r else default
 
     @property
-    def exif_keys(self):
+    def exif_keys(self) -> list[str]:
         return self.r.exif_keys
 
 
 class BasicProcessor:
     def __init__(self, root: str, exclude: list[str]):
         self.root = root
-        for path, dirs, files in os.walk(root):
+        for path, _, files in os.walk(root):
             for f in files:
                 ff = os.path.join(path, f)
                 if any(x in ff for x in exclude):
@@ -36,21 +37,26 @@ class BasicProcessor:
                 if self.sieve(ff):
                     self.process(ff)
 
-    def sieve(self, filename):
+    def process(self, f: str) -> None:
+        pass
+
+    def sieve(self, filename: str) -> bool:
         return filename.endswith(".jpg")
 
 
 class Cams(BasicProcessor):
     """Collects camera maker / model stats"""
 
-    stat = defaultdict(lambda: defaultdict(int))
+    stat: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
 
-    def process(self, f):
+    @override
+    def process(self, f: str):
         p = Photo(f)
         maker = p.get("Exif.Image.Make", "<UNDEF>").strip()
         model = p.get("Exif.Image.Model", "<UNDEF>").strip()
         self.stat[maker][model] += 1
 
+    @override
     def __str__(self):
         r = ""
         for maker in sorted(self.stat.keys()):
@@ -62,13 +68,15 @@ class Cams(BasicProcessor):
 class NoCam(BasicProcessor):
     """Finds photos w/o camera maker/model"""
 
-    lst = []
+    lst: list[str] = []
 
-    def process(self, f):
+    @override
+    def process(self, f: str):
         p = Photo(f)
-        if p.get("Exif.Image.Make") is None or p.get("Exif.Image.Model") is None:
+        if p.get("Exif.Image.Make") == "" or p.get("Exif.Image.Model") == "":
             self.lst.append(f)
 
+    @override
     def __str__(self):
         return "\n".join(self.lst)
 
@@ -76,14 +84,16 @@ class NoCam(BasicProcessor):
 class Hugin(BasicProcessor):
     """Finds Hugin-processed photos"""
 
-    lst = {}
+    lst: dict[str, str] = {}
 
-    def process(self, f):
+    @override
+    def process(self, f: str):
         p = Photo(f)
-        software = p.get("Exif.Image.Software", "")
+        software = p.get("Exif.Image.Software")
         if "Hugin" in software:
             self.lst[f] = software
 
+    @override
     def __str__(self):
         return "\n".join(f"{upto60(k): >60} | {v: <30}" for k, v in self.lst.items())
 
@@ -91,33 +101,37 @@ class Hugin(BasicProcessor):
 class NoGPS(BasicProcessor):
     """Find photos without GPS tag"""
 
-    lst = []
+    lst: list[str] = []
 
-    def process(self, f):
+    @override
+    def process(self, f: str):
         p = Photo(f)
         if (
-            p.get("Exif.GPSInfo.GPSLatitude") is None
-            or p.get("Exif.GPSInfo.GPSLongitude") is None
+            p.get("Exif.GPSInfo.GPSLatitude") == ""
+            or p.get("Exif.GPSInfo.GPSLongitude") == ""
         ):
             self.lst.append(f)
 
+    @override
     def __str__(self):
         return "\n".join(self.lst)
 
 
 class NoGPSDir(BasicProcessor):
-    lst = {}
+    lst: dict[str, dict[bool, int]] = {}
 
-    def process(self, f):
+    @override
+    def process(self, f: str):
         p = Photo(f)
         nogps = (
-            p.get("Exif.GPSInfo.GPSLatitude") is None
-            or p.get("Exif.GPSInfo.GPSLongitude") is None
+            p.get("Exif.GPSInfo.GPSLatitude") == ""
+            or p.get("Exif.GPSInfo.GPSLongitude") == ""
         )
         dirname = os.path.dirname(f).removeprefix(self.root)
         self.lst.setdefault(dirname, {True: 0, False: 0})
         self.lst[dirname][nogps] += 1
 
+    @override
     def __str__(self):
         return "\n".join(
             f"{v[True]:3} / {v[False]:<3} {k}"
@@ -127,12 +141,13 @@ class NoGPSDir(BasicProcessor):
 
 
 class SameTag(BasicProcessor):
-    tags = {}
+    tags: dict[str, dict[str, str | int]] = {}
 
-    def process(self, f):
+    @override
+    def process(self, f: str) -> None:
         p = Photo(f)
         for key in p.exif_keys:
-            val = str(p.get(key))
+            val = p.get(key)
             if key not in self.tags:
                 self.tags[key] = {"c": 1, "v": val}
             else:
@@ -141,7 +156,8 @@ class SameTag(BasicProcessor):
                 else:
                     self.tags[key] = {"c": -1, "v": "<DIFFERENT>"}
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         return "\n".join(
             f'{y["c"]:5} | {x:40} | {y["v"]}'
             for x, y in sorted(self.tags.items(), key=lambda x: x[1]["c"])
