@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
+import concurrent.futures
+import dataclasses
 import os
 import pyexiv2
-from collections import defaultdict
 from typing import override
 
 
@@ -26,141 +27,181 @@ class Photo:
         return self.r.exif_keys
 
 
-class BasicProcessor:
-    def __init__(self, root: str, exclude: list[str]):
-        self.root = root
+class BasicProcessor[T]:
+    def __init__(
+        self, root: str, exclude: list[str], executor: concurrent.futures.Executor
+    ):
+        self.root: str = root
+        self.tasks: list[concurrent.futures.Future[T]] = []
         for path, _, files in os.walk(root):
             for f in files:
                 ff = os.path.join(path, f)
                 if any(x in ff for x in exclude):
                     continue
                 if self.sieve(ff):
-                    self.process(ff)
+                    self.tasks.append(executor.submit(self.process, ff))
 
-    def process(self, f: str) -> None:
-        pass
+    @staticmethod
+    def process(f: str) -> T: ...
 
-    def sieve(self, filename: str) -> bool:
-        return filename.endswith(".jpg")
-
-
-class Cams(BasicProcessor):
-    """Collects camera maker / model stats"""
-
-    stat: defaultdict[str, defaultdict[str, int]] = defaultdict(lambda: defaultdict(int))
+    @staticmethod
+    def sieve(fn: str) -> bool:
+        return fn.endswith(".jpg")
 
     @override
-    def process(self, f: str):
+    def __str__(self) -> str:
+        return ""
+
+
+class Cams(BasicProcessor[tuple[str, str]]):
+    """Collects camera maker / model stats"""
+
+    @override
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
         maker = p.get("Exif.Image.Make", "<UNDEF>").strip()
         model = p.get("Exif.Image.Model", "<UNDEF>").strip()
-        self.stat[maker][model] += 1
+        return maker, model
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
+        stat: dict[str, dict[str, int]] = {}
+        for task in self.tasks:
+            maker, model = task.result()
+            x: dict[str, int] = stat.setdefault(maker, {})
+            y = x.setdefault(model, 0)
+            x[model] = y + 1
         r = ""
-        for maker in sorted(self.stat.keys()):
-            for model in sorted(self.stat[maker].keys()):
-                r += f"{maker: >25} | {model: >40} | {self.stat[maker][model]:<5}\n"
+        for maker in sorted(stat.keys()):
+            for model in sorted(stat[maker].keys()):
+                r += f"{maker: >25} | {model: >40} | {stat[maker][model]:<5}\n"
         return r
 
 
-class NoCam(BasicProcessor):
+class NoCam(BasicProcessor[str]):
     """Finds photos w/o camera maker/model"""
 
-    lst: list[str] = []
-
     @override
-    def process(self, f: str):
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
-        if p.get("Exif.Image.Make") == "" or p.get("Exif.Image.Model") == "":
-            self.lst.append(f)
+        return (
+            f
+            if p.get("Exif.Image.Make") == "" or p.get("Exif.Image.Model") == ""
+            else ""
+        )
 
     @override
-    def __str__(self):
-        return "\n".join(self.lst)
+    def __str__(self) -> str:
+        lst: list[str] = []
+        for task in self.tasks:
+            f = task.result()
+            if f:
+                lst.append(f)
+        return "\n".join(lst)
 
 
-class Hugin(BasicProcessor):
+class Hugin(BasicProcessor[tuple[str, str]]):
     """Finds Hugin-processed photos"""
 
-    lst: dict[str, str] = {}
-
     @override
-    def process(self, f: str):
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
         software = p.get("Exif.Image.Software")
-        if "Hugin" in software:
-            self.lst[f] = software
+        return (f, software) if "Hugin" in software else ("", "")
 
     @override
-    def __str__(self):
-        return "\n".join(f"{upto60(k): >60} | {v: <30}" for k, v in self.lst.items())
+    def __str__(self) -> str:
+        res: dict[str, str] = {}
+        for task in self.tasks:
+            f, s = task.result()
+            if f:
+                res[f] = s
+        return "\n".join(f"{upto60(k): >60} | {v: <30}" for k, v in res.items())
 
 
-class NoGPS(BasicProcessor):
+class NoGPS(BasicProcessor[str]):
     """Find photos without GPS tag"""
 
-    lst: list[str] = []
-
     @override
-    def process(self, f: str):
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
-        if (
-            p.get("Exif.GPSInfo.GPSLatitude") == ""
-            or p.get("Exif.GPSInfo.GPSLongitude") == ""
-        ):
-            self.lst.append(f)
+        return (
+            f
+            if (
+                p.get("Exif.GPSInfo.GPSLatitude") == ""
+                or p.get("Exif.GPSInfo.GPSLongitude") == ""
+            )
+            else ""
+        )
 
     @override
-    def __str__(self):
-        return "\n".join(self.lst)
+    def __str__(self) -> str:
+        lst: list[str] = []
+        for task in self.tasks:
+            s = task.result()
+            if s:
+                lst.append(s)
+        return "\n".join(lst)
 
 
-class NoGPSDir(BasicProcessor):
-    lst: dict[str, dict[bool, int]] = {}
-
+class NoGPSDir(BasicProcessor[tuple[str, bool]]):
     @override
-    def process(self, f: str):
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
         nogps = (
             p.get("Exif.GPSInfo.GPSLatitude") == ""
             or p.get("Exif.GPSInfo.GPSLongitude") == ""
         )
-        dirname = os.path.dirname(f).removeprefix(self.root)
-        self.lst.setdefault(dirname, {True: 0, False: 0})
-        self.lst[dirname][nogps] += 1
+        return os.path.dirname(f), nogps
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
+        res: dict[str, dict[bool, int]] = {}
+        for task in self.tasks:
+            dirname, nogps = task.result()
+            d2 = dirname.removeprefix(self.root)
+            x = res.setdefault(d2, {True: 0, False: 0})
+            x[nogps] += 1
         return "\n".join(
             f"{v[True]:3} / {v[False]:<3} {k}"
-            for k, v in sorted(self.lst.items(), key=lambda x: x[1][True])
+            for k, v in sorted(res.items(), key=lambda x: x[1][True])
             if v[True] > 0
         )
 
 
-class SameTag(BasicProcessor):
-    tags: dict[str, dict[str, str | int]] = {}
-
+class SameTag(BasicProcessor[list[tuple[str, str]]]):
     @override
-    def process(self, f: str) -> None:
+    @staticmethod
+    def process(f: str):
         p = Photo(f)
-        for key in p.exif_keys:
-            val = p.get(key)
-            if key not in self.tags:
-                self.tags[key] = {"c": 1, "v": val}
-            else:
-                if self.tags[key]["v"] == val:
-                    self.tags[key]["c"] += 1
-                else:
-                    self.tags[key] = {"c": -1, "v": "<DIFFERENT>"}
+        return [(k, str(p.get(k, "FAIL")).encode().decode("unicode-escape")) for k in p.exif_keys]
 
     @override
     def __str__(self) -> str:
+        @dataclasses.dataclass
+        class Cnt:
+            val: str
+            cnt: int
+
+        tags: dict[str, Cnt] = {}
+        for task in self.tasks:
+            for k, v in task.result():
+                if k not in tags:
+                    tags[k] = Cnt(v, 1)
+                else:
+                    if tags[k].val == v:
+                        tags[k].cnt += 1
+                    else:
+                        tags[k] = Cnt("<DIFFERENT>", -1)
+
         return "\n".join(
-            f'{y["c"]:5} | {x:40} | {y["v"]}'
-            for x, y in sorted(self.tags.items(), key=lambda x: x[1]["c"])
+            f"{y.cnt:5} | {x:50} | {y.val}"
+            for x, y in sorted(tags.items(), key=lambda x: x[1].cnt)
         )
 
 
@@ -184,4 +225,5 @@ if __name__ == "__main__":
         "nogpsdir": NoGPSDir,
         "sametag": SameTag,
     }
-    print(modes[args.mode](root=args.root, exclude=args.exclude))
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        print(modes[args.mode](root=args.root, exclude=args.exclude, executor=executor))
