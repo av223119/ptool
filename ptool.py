@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import abc
 import argparse
 import concurrent.futures
 import dataclasses
@@ -13,7 +14,6 @@ def upto60(x: str) -> str:
     return x if len(x) < 60 else "…%s" % x[-59:]
 
 
-# TODO: some stuff
 class Photo:
     def __init__(self, path: str):
         self.r = pyexiv2.ImageMetadata(path)
@@ -42,6 +42,7 @@ class BasicProcessor[T]:
                     self.tasks.append(executor.submit(self.process, ff))
 
     @staticmethod
+    @abc.abstractmethod
     def process(f: str) -> T: ...
 
     @staticmethod
