@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
-
 import abc
 import argparse
 import concurrent.futures
+import contextlib
 import dataclasses
+import itertools
 import os
-import pyexiv2
-from typing import override
+import typing
+from PIL import ExifTags, Image
 
 
 def upto60(x: str) -> str:
@@ -14,17 +14,9 @@ def upto60(x: str) -> str:
     return x if len(x) < 60 else "…%s" % x[-59:]
 
 
-class Photo:
-    def __init__(self, path: str):
-        self.r = pyexiv2.ImageMetadata(path)
-        self.r.read()
-
-    def get(self, key: str, default: str = "") -> str:
-        return self.r[key].value if key in self.r else default
-
-    @property
-    def exif_keys(self) -> list[str]:
-        return self.r.exif_keys
+def exif(path: str) -> Image.Exif:
+    img = Image.open(path)
+    return img.getexif()
 
 
 class BasicProcessor[T]:
@@ -47,9 +39,9 @@ class BasicProcessor[T]:
 
     @staticmethod
     def sieve(fn: str) -> bool:
-        return fn.endswith(".jpg")
+        return fn.endswith(".jpg") or (fn.endswith(".heic") and has_heif)
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         return ""
 
@@ -57,15 +49,15 @@ class BasicProcessor[T]:
 class Cams(BasicProcessor[tuple[str, str]]):
     """Collects camera maker / model stats"""
 
-    @override
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
-        maker = p.get("Exif.Image.Make", "<UNDEF>").strip()
-        model = p.get("Exif.Image.Model", "<UNDEF>").strip()
+        e = exif(f)
+        maker = e.get(ExifTags.Base.Make, "<UNDEF>").strip().strip("\x00")
+        model = e.get(ExifTags.Base.Model, "<UNDEF>").strip().strip("\x00")
         return maker, model
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         stat: dict[str, dict[str, int]] = {}
         for task in self.tasks:
@@ -83,17 +75,17 @@ class Cams(BasicProcessor[tuple[str, str]]):
 class NoCam(BasicProcessor[str]):
     """Finds photos w/o camera maker/model"""
 
-    @override
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
+        e = exif(f)
         return (
             f
-            if p.get("Exif.Image.Make") == "" or p.get("Exif.Image.Model") == ""
+            if e.get(ExifTags.Base.Make) == "" or e.get(ExifTags.Base.Model) == ""
             else ""
         )
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         lst: list[str] = []
         for task in self.tasks:
@@ -106,14 +98,14 @@ class NoCam(BasicProcessor[str]):
 class Hugin(BasicProcessor[tuple[str, str]]):
     """Finds Hugin-processed photos"""
 
-    @override
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
-        software = p.get("Exif.Image.Software")
+        e = exif(f)
+        software = e.get(ExifTags.Base.Software, "")
         return (f, software) if "Hugin" in software else ("", "")
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         res: dict[str, str] = {}
         for task in self.tasks:
@@ -126,20 +118,21 @@ class Hugin(BasicProcessor[tuple[str, str]]):
 class NoGPS(BasicProcessor[str]):
     """Find photos without GPS tag"""
 
-    @override
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
+        e = exif(f)
+        gps = e.get_ifd(ExifTags.IFD.GPSInfo)
         return (
             f
             if (
-                p.get("Exif.GPSInfo.GPSLatitude") == ""
-                or p.get("Exif.GPSInfo.GPSLongitude") == ""
+                not gps.get(ExifTags.GPS.GPSLatitude)
+                or not gps.get(ExifTags.GPS.GPSLongitude)
             )
             else ""
         )
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         lst: list[str] = []
         for task in self.tasks:
@@ -150,17 +143,17 @@ class NoGPS(BasicProcessor[str]):
 
 
 class NoGPSDir(BasicProcessor[tuple[str, bool]]):
-    @override
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
-        nogps = (
-            p.get("Exif.GPSInfo.GPSLatitude") == ""
-            or p.get("Exif.GPSInfo.GPSLongitude") == ""
+        e = exif(f)
+        gps = e.get_ifd(ExifTags.IFD.GPSInfo)
+        nogps = not gps.get(ExifTags.GPS.GPSLatitude) or not gps.get(
+            ExifTags.GPS.GPSLongitude
         )
         return os.path.dirname(f), nogps
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         res: dict[str, dict[bool, int]] = {}
         for task in self.tasks:
@@ -175,21 +168,24 @@ class NoGPSDir(BasicProcessor[tuple[str, bool]]):
         )
 
 
-class SameTag(BasicProcessor[list[tuple[str, str]]]):
-    @override
+class SameTag(BasicProcessor[list[tuple[int, typing.Any]]]):
+    @typing.override
     @staticmethod
     def process(f: str):
-        p = Photo(f)
-        return [(k, str(p.get(k, "FAIL")).encode().decode("unicode-escape")) for k in p.exif_keys]
+        e = exif(f)
+        return [
+            (k, v)
+            for k, v in itertools.chain(e.items(), e.get_ifd(ExifTags.IFD.Exif).items())
+        ]
 
-    @override
+    @typing.override
     def __str__(self) -> str:
         @dataclasses.dataclass
         class Cnt:
-            val: str
+            val: typing.Any
             cnt: int
 
-        tags: dict[str, Cnt] = {}
+        tags: dict[int, Cnt] = {}
         for task in self.tasks:
             for k, v in task.result():
                 if k not in tags:
@@ -201,10 +197,17 @@ class SameTag(BasicProcessor[list[tuple[str, str]]]):
                         tags[k] = Cnt("<DIFFERENT>", -1)
 
         return "\n".join(
-            f"{y.cnt:5} | {x:50} | {y.val}"
+            f"{y.cnt:5} | {ExifTags.TAGS.get(x, x):50} | {y.val}"
             for x, y in sorted(tags.items(), key=lambda x: x[1].cnt)
         )
 
+
+has_heif: bool = False
+with contextlib.suppress(ImportError):
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+    has_heif = True
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument(
@@ -216,7 +219,8 @@ _parser.add_argument(
 _parser.add_argument("root", action="store", type=str)
 _parser.add_argument("-x", "--exclude", action="append", type=str, default=[])
 
-if __name__ == "__main__":
+
+def main():
     args = _parser.parse_args()
     modes = {
         "cams": Cams,
@@ -228,3 +232,7 @@ if __name__ == "__main__":
     }
     with concurrent.futures.ProcessPoolExecutor() as executor:
         print(modes[args.mode](root=args.root, exclude=args.exclude, executor=executor))
+
+
+if __name__ == "__main__":
+    main()
