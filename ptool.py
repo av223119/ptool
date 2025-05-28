@@ -19,7 +19,7 @@ def exif(path: str) -> Image.Exif:
     return img.getexif()
 
 
-class BasicProcessor[T]:
+class BasicProcessor[T](abc.ABC):
     def __init__(
         self, root: str, exclude: list[str], executor: concurrent.futures.Executor
     ):
