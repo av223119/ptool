@@ -10,8 +10,10 @@ dependencies = [
 version = "2025.04"
 
 [project.optional-dependencies]
-all = [
-    "pillow-heif",
+heif = [
+    "pillow-heif"
+]
+dev = [
     "ruff",
     "mypy"
 ]
