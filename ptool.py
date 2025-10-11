@@ -209,12 +209,22 @@ with contextlib.suppress(ImportError):
     pillow_heif.register_heif_opener()
     has_heif = True
 
+modes = {
+    "cams": Cams,
+    "nocam": NoCam,
+    "hugin": Hugin,
+    "nogps": NoGPS,
+    "nogpsdir": NoGPSDir,
+    "sametag": SameTag,
+    "comment": UserComment,
+}
+
 _parser = argparse.ArgumentParser()
 _parser.add_argument(
     "mode",
     action="store",
     type=str,
-    choices=("cams", "nocam", "hugin", "nogps", "nogpsdir", "sametag"),
+    choices=list(modes),
 )
 _parser.add_argument("root", action="store", type=str)
 _parser.add_argument("-x", "--exclude", action="append", type=str, default=[])
@@ -222,14 +232,6 @@ _parser.add_argument("-x", "--exclude", action="append", type=str, default=[])
 
 def main():
     args = _parser.parse_args()
-    modes = {
-        "cams": Cams,
-        "nocam": NoCam,
-        "hugin": Hugin,
-        "nogps": NoGPS,
-        "nogpsdir": NoGPSDir,
-        "sametag": SameTag,
-    }
     with concurrent.futures.ProcessPoolExecutor() as executor:
         print(modes[args.mode](root=args.root, exclude=args.exclude, executor=executor))
 
