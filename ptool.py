@@ -9,9 +9,9 @@ import typing
 from PIL import ExifTags, Image
 
 
-def upto60(x: str) -> str:
-    """shortens string to 60 characters"""
-    return x if len(x) < 60 else "…%s" % x[-59:]
+def upto(n: int, x: str) -> str:
+    """shortens string to N characters"""
+    return x if len(x) < n else "…%s" % x[-(n - 1) :]
 
 
 def exif(path: str) -> Image.Exif:
@@ -112,7 +112,53 @@ class Hugin(BasicProcessor[tuple[str, str]]):
             f, s = task.result()
             if f:
                 res[f] = s
-        return "\n".join(f"{upto60(k): >60} | {v: <30}" for k, v in res.items())
+        return "\n".join(f"{upto(60, k): >60} | {v: <30}" for k, v in res.items())
+
+
+class UserComment(BasicProcessor[tuple[str, str]]):
+    """Finds photos with UserComment"""
+
+    @typing.override
+    @staticmethod
+    def process(f: str):
+        e = exif(f)
+        ifd = e.get_ifd(ExifTags.IFD.Exif)
+        comment = ifd.get(ExifTags.Base.UserComment)
+        if comment is None:
+            return ("", "")
+        # XXX: Here be dragons!
+        # Exif 3.2 spec, §4.6.5, demands UserComment to be a byte array
+        # First 8 bytes must be code specification:
+        # A S C I I 0 0 0
+        # U N I C O D E 0
+        # J I S 0 0 0 0 0
+        # 0 0 0 0 0 0 0 0
+        # The rest should be comment itself. Unicode flavour is not
+        # specified, i.e. UTF-16 BE, LE, UTF-8 are all valid.
+        # In reality, 8 bytes are often not present at all.
+        if isinstance(comment, str):
+            return (f, comment)
+        assert isinstance(comment, bytes), f"Type is {type(comment)}"
+        if comment[:8] in (
+            b"ASCII\x00\x00\x00",
+            b"UNICODE\x00",
+            b"JIS\x00\x00\x00\x00\x00",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00",
+        ):
+            return (f, comment[8:].decode())
+        return (f, comment.decode())
+
+    @typing.override
+    def __str__(self) -> str:
+        res: dict[str, str] = {}
+        for task in self.tasks:
+            f, s = task.result()
+            if f:
+                res[f] = s
+        return "\n".join(
+            f"{upto(60, k): >60} | {' '.join(v[:40].split()): <40}"
+            for k, v in res.items()
+        )
 
 
 class NoGPS(BasicProcessor[str]):
