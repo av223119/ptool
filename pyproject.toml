@@ -7,7 +7,7 @@ name = "ptool"
 dependencies = [
     "pillow"
 ]
-version = "2025.04"
+version = "2025.10"
 
 [project.optional-dependencies]
 heif = [
