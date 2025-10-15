@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-ptool = "ptool:main"
+ptool = "ptool.__main__:entry"
 
 [tool.basedpyright]
 reportUnusedCallResult = false
@@ -27,3 +27,25 @@ reportAny = false
 
 [tool.mypy]
 disable_error_code = ["import-untyped"]
+
+[tool.ruff]
+line-length = 100
+
+
+[tool.ruff.lint]
+dummy-variable-rgx = "^_$"
+select = [
+    "E",     # pycodestyle ┐
+    "F",     # pyflakes    ├ ~= flake8
+    "W",     # warnings    ┘
+    "I",     # isort
+    "UP",    # pyupgrade
+    "A",     # flake8-builtins
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "YTT",   # flake8-2020
+    "FBT",   # flake8-boolean-trap
+    "C4",    # flake8-comprehensions
+]
