@@ -48,4 +48,5 @@ select = [
     "YTT",   # flake8-2020
     "FBT",   # flake8-boolean-trap
     "C4",    # flake8-comprehensions
+    "ASYNC", # flake8-async
 ]
