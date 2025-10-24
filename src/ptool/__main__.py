@@ -1,7 +1,7 @@
 import argparse
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 
 import ptool.collectors as collector
 import ptool.sieves as sieve
@@ -10,7 +10,7 @@ import ptool.workers as worker
 
 async def main[T](
     sieve_f: Callable[[str], bool],
-    worker_f: Callable[[str], Awaitable[T]],
+    worker_f: Callable[[str], Coroutine[None, None, T]],
     collector_f: Callable[[list[Awaitable[T]]], Awaitable[str]],
     root: str,
     exclude: list[str],
