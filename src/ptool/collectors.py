@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 
 
 def right(n: int, x: str) -> str:
@@ -10,7 +10,7 @@ def left(n: int, x: str) -> str:
     return x if len(x) < n else f"{x[: (n - 1)]}…"
 
 
-async def two_level(tasks: list[Awaitable[tuple[str, str]]]) -> str:
+async def two_level(tasks: Sequence[Awaitable[tuple[str, str]]]) -> str:
     stat: dict[str, dict[str, int]] = {}
     async for task in asyncio.as_completed(tasks):
         maker, model = await task
@@ -24,7 +24,7 @@ async def two_level(tasks: list[Awaitable[tuple[str, str]]]) -> str:
     return r
 
 
-async def simple_list(tasks: list[Awaitable[str]]) -> str:
+async def simple_list(tasks: Sequence[Awaitable[str]]) -> str:
     lst: list[str] = []
     async for task in asyncio.as_completed(tasks):
         f = await task
@@ -33,7 +33,7 @@ async def simple_list(tasks: list[Awaitable[str]]) -> str:
     return "\n".join(lst)
 
 
-async def key_value(tasks: list[Awaitable[tuple[str, str]]]) -> str:
+async def key_value(tasks: Sequence[Awaitable[tuple[str, str]]]) -> str:
     res: dict[str, str] = {}
     async for task in asyncio.as_completed(tasks):
         f, s = await task
@@ -44,7 +44,7 @@ async def key_value(tasks: list[Awaitable[tuple[str, str]]]) -> str:
     )
 
 
-async def nogpsdir(tasks: list[Awaitable[tuple[str, bool]]]) -> str:
+async def nogpsdir(tasks: Sequence[Awaitable[tuple[str, bool]]]) -> str:
     res: dict[str, dict[bool, int]] = {}
     async for task in asyncio.as_completed(tasks):
         dirname, nogps = task.result()
@@ -58,7 +58,7 @@ async def nogpsdir(tasks: list[Awaitable[tuple[str, bool]]]) -> str:
     )
 
 
-async def stats(tasks: list[Awaitable[str]]) -> str:
+async def stats(tasks: Sequence[Awaitable[str]]) -> str:
     res: dict[str, int] = {}
     async for task in asyncio.as_completed(tasks):
         val = await task
